@@ -1,3 +1,4 @@
+// components/Menu.jsx
 import { useState, useEffect } from 'react';
 import { restaurantService } from '../services/restaurantService';
 
@@ -7,8 +8,14 @@ export default function Menu() {
     const [error, setError] = useState(null);
     const [cart, setCart] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [tableId, setTableId] = useState(1); // Mesa por defecto
 
     useEffect(() => {
+        // Capturar el número de mesa de la URL (ej: ?mesa=5)
+        const params = new URLSearchParams(window.location.search);
+        const mesa = params.get('mesa');
+        if (mesa) setTableId(parseInt(mesa));
+
         const fetchMenu = async () => {
             try {
                 const data = await restaurantService.getMenu();
@@ -27,7 +34,6 @@ export default function Menu() {
             const currentQty = prev[dish.id]?.quantity || 0;
             const newQty = currentQty + delta;
             
-            // Regla de oro: No menos de 0, y NO superar el límite de stock de la cocina
             if (newQty < 0 || newQty > dish.maxAvailable) return prev;
             
             if (newQty === 0) {
@@ -38,28 +44,35 @@ export default function Menu() {
             
             return {
                 ...prev,
-                [dish.id]: { ...dish, quantity: newQty }
+                [dish.id]: { 
+                    ...dish, 
+                    quantity: newQty,
+                    notes: prev[dish.id]?.notes || "" // Mantener notas si ya existían
+                }
             };
         });
     };
 
+    const updateNotes = (dishId, notes) => {
+        setCart(prev => ({
+            ...prev,
+            [dishId]: { ...prev[dishId], notes }
+        }));
+    };
+
     const handleConfirmOrder = async () => {
         setIsSubmitting(true);
-
         try {
-            // 1. Extraemos los platos del carrito como un arreglo (Array)
             const cartItems = Object.values(cart);
-
-            // 2. Llamamos a "sendOrder" (el nombre correcto) pasándole la Mesa 1 y el carrito
-            await restaurantService.sendOrder(1, cartItems);
-
-            // 3. Éxito: Limpiamos y avisamos
-            alert("¡Pedido enviado a cocina exitosamente!");
+            // Ahora usa el tableId dinámico
+            await restaurantService.sendOrder(tableId, cartItems);
+            
+            alert(`¡Pedido enviado a cocina para la Mesa ${tableId}!`);
             setCart({});
             
-            // 4. Actualizamos el menú para refrescar la cantidad de "Disponibles"
-            fetchMenu(); 
-
+            // Recargar para actualizar disponibilidades
+            const data = await restaurantService.getMenu();
+            setDishes(data);
         } catch (err) {
             alert("Error: " + err.message);
         } finally {
@@ -71,56 +84,63 @@ export default function Menu() {
     if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
 
     return (
-        // Aplicamos el fondo oscuro de tu diseño referencial
-        <div className="max-w-2xl mx-auto px-4 py-8 bg-[#1f2228] min-h-screen font-sans">
-            <h1 className="text-3xl font-black text-gray-200 mb-8 text-center">Menú Sonqo</h1>
+        <div className="max-w-2xl mx-auto px-4 py-8 bg-[#1f2228] min-h-screen font-sans pb-32">
+            <h1 className="text-3xl font-black text-gray-200 mb-2 text-center">Menú Sonqo</h1>
+            <p className="text-center text-[#f97316] font-bold mb-8">Mesa {tableId}</p>
             
             <div className="space-y-4">
                 {dishes.map((dish) => {
-                    const currentQty = cart[dish.id]?.quantity || 0;
+                    const cartItem = cart[dish.id];
+                    const currentQty = cartItem?.quantity || 0;
                     const isSoldOut = dish.maxAvailable <= 0;
-
+                    
                     return (
-                        <div key={dish.id} className="bg-[#242731] rounded-xl overflow-hidden border border-gray-700/50 p-4 flex items-center justify-between shadow-sm">
-                            <div className="flex-1">
-                                <h2 className="text-lg font-bold text-gray-100">{dish.name}</h2>
-                                <div className="flex flex-col mt-1">
-                                    <span className="text-[#f97316] font-semibold">S/ {dish.price.toFixed(2)}</span>
-                                    {/* Indicador de porciones en color verde estilo diseño */}
-                                    <span className={`text-sm font-semibold mt-1 ${isSoldOut ? 'text-red-500' : 'text-[#10b981]'}`}>
-                                        {isSoldOut ? 'AGOTADO' : `Disponibles: ${dish.maxAvailable} porciones`}
-                                    </span>
+                        <div key={dish.id} className="bg-[#242731] rounded-xl overflow-hidden border border-gray-700/50 p-4 flex flex-col shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1 pr-2">
+                                    <h2 className="text-lg font-bold text-gray-100">{dish.name}</h2>
+                                    <div className="flex flex-col mt-1">
+                                        <span className="text-[#f97316] font-semibold">S/ {dish.price.toFixed(2)}</span>
+                                        <span className={`text-sm font-semibold mt-1 ${isSoldOut ? 'text-red-500' : 'text-[#10b981]'}`}>
+                                            {isSoldOut ? 'AGOTADO' : `Disponibles: ${dish.maxAvailable}`}
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 bg-[#13151a] rounded-lg p-1 border border-gray-700/50">
+                                    <button 
+                                        onClick={() => updateQuantity(dish, -1)}
+                                        disabled={currentQty === 0}
+                                        className="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 transition-colors"
+                                    >-</button>
+                                    <span className="w-6 text-center font-bold text-gray-200">{currentQty}</span>
+                                    <button 
+                                        onClick={() => updateQuantity(dish, 1)}
+                                        disabled={currentQty >= dish.maxAvailable || isSoldOut}
+                                        className="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 transition-colors"
+                                    >+</button>
                                 </div>
                             </div>
-                            
-                            {/* Panel oscuro de botones numéricos */}
-                            <div className="flex items-center gap-2 bg-[#13151a] rounded-lg p-1 border border-gray-700/50">
-                                <button 
-                                    onClick={() => updateQuantity(dish, -1)}
-                                    disabled={currentQty === 0}
-                                    className="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 transition-colors"
-                                >
-                                    -
-                                </button>
-                                <span className="w-6 text-center font-bold text-gray-200">
-                                    {currentQty}
-                                </span>
-                                <button 
-                                    onClick={() => updateQuantity(dish, 1)}
-                                    disabled={currentQty >= dish.maxAvailable || isSoldOut}
-                                    className="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 transition-colors"
-                                >
-                                    +
-                                </button>
-                            </div>
+
+                            {/* Campo de notas condicional (solo aparece si hay al menos 1 en el carrito) */}
+                            {currentQty > 0 && (
+                                <div className="mt-3 pt-3 border-t border-gray-700/50">
+                                    <input 
+                                        type="text"
+                                        placeholder="Ej: Sin ají, bien cocido..."
+                                        value={cartItem.notes || ''}
+                                        onChange={(e) => updateNotes(dish.id, e.target.value)}
+                                        className="w-full bg-[#13151a] text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f97316]"
+                                    />
+                                </div>
+                            )}
                         </div>
                     );
                 })}
             </div>
 
-            {/* Barra flotante inferior (Carrito) */}
             {Object.keys(cart).length > 0 && (
-                <div className="fixed bottom-0 left-0 right-0 bg-[#242731] border-t border-gray-700/50 p-4 shadow-lg">
+                <div className="fixed bottom-0 left-0 right-0 bg-[#242731] border-t border-gray-700/50 p-4 shadow-lg z-50">
                     <div className="max-w-2xl mx-auto flex justify-between items-center">
                         <div>
                             <p className="text-sm text-gray-400">Total a pagar</p>
@@ -133,7 +153,7 @@ export default function Menu() {
                             disabled={isSubmitting}
                             className="bg-[#f97316] hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold transition-colors disabled:opacity-50"
                         >
-                            {isSubmitting ? 'Procesando...' : 'Confirmar Pedido'}
+                            {isSubmitting ? 'Procesando...' : 'Pedir ahora'}
                         </button>
                     </div>
                 </div>

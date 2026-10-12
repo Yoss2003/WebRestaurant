@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Instancia principal apuntando a tu backend de .NET
 const api = axios.create({
-    baseURL: 'https://localhost:7064/api',
+    baseURL: 'http://192.168.1.16:5065/api',
     headers: {
         'Content-Type': 'application/json'
     }
