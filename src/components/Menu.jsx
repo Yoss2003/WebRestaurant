@@ -5,23 +5,22 @@ import { restaurantService } from '../services/restaurantService';
 export default function Menu() {
     const [dishes, setDishes] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [error] = useState(null);
     const [cart, setCart] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [tableId, setTableId] = useState(1); // Mesa por defecto
-
-    useEffect(() => {
-        // Capturar el número de mesa de la URL (ej: ?mesa=5)
+    const [tableId] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         const mesa = params.get('mesa');
-        if (mesa) setTableId(parseInt(mesa));
+        return mesa ? parseInt(mesa) : null;
+    });
 
+    useEffect(() => {
         const fetchMenu = async () => {
             try {
                 const data = await restaurantService.getMenu();
                 setDishes(data);
-            } catch (err) {
-                setError("Error al cargar la carta. Verifica la conexión.");
+            } catch (err){
+                console.error("Hubo un error al cargar el menú: ", err);
             } finally {
                 setLoading(false);
             }
