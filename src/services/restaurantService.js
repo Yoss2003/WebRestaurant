@@ -1,25 +1,27 @@
 import api from './api';
 
 export const restaurantService = {
-    // 1. Traer todos los platos disponibles
-    getMenu: async () => {
-        const response = await api.get('/Dishes');
+    getMenu: async (options = {}) => {
+        const { restaurantId, tableId, signal } = options;
+        const params = {};
+        if (restaurantId) params.restaurantId = restaurantId;
+        if (tableId) params.tableId = tableId;
+
+        const response = await api.get('/Dishes', { params, signal });
         return response.data;
     },
 
-    // 2. Enviar el pedido a la mesa
-    sendOrder: async (tableId, cartItems) => {
-        // Mapeamos el carrito de React al OrderCreateDTO que pide tu C#
-        const orderPayload = {
-            tableId: tableId,
+    sendOrder: async (tableId, cartItems, restaurantId = 1) => {
+        const payload = {
+            tableId: Number(tableId),
+            restaurantId: Number(restaurantId),
             items: cartItems.map(item => ({
-                dishId: item.id,
-                quantity: item.quantity,
-                notes: item.notes || ""
+                dishId: Number(item.id),
+                quantity: Number(item.quantity),
+                notes: (item.notes || '').trim()
             }))
         };
-
-        const response = await api.post('/Orders', orderPayload);
+        const response = await api.post('/Orders', payload);
         return response.data;
     }
 };

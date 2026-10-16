@@ -1,22 +1,29 @@
 import axios from 'axios';
 
-// Instancia principal apuntando a tu backend de .NET
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://192.168.1.16:5065/api').trim();
+
 const api = axios.create({
-    baseURL: 'http://192.168.1.16:5065/api',
+    baseURL: API_BASE_URL,
+    timeout: 15000,
     headers: {
         'Content-Type': 'application/json'
     }
 });
 
-// Interceptor para inyectar el token JWT en las peticiones que lo requieran
-api.interceptors.request.use(config => {
-    const token = localStorage.getItem('token');
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-}, error => {
-    return Promise.reject(error);
-});
+api.interceptors.request.use(
+    (config) => {
+        const tableToken = typeof window !== 'undefined' ? sessionStorage.getItem('tableSessionToken') : null;
+        if (tableToken && config.url) {
+            const isRelativePath = !/^https?:\/\//i.test(config.url);
+            const isSameOrigin = config.url.startsWith(API_BASE_URL);
+
+            if (isRelativePath || isSameOrigin) {
+                config.headers.Authorization = `Bearer ${tableToken}`;
+            }
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
 
 export default api;
