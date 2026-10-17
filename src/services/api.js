@@ -26,6 +26,7 @@ const api = axios.create({
 api.interceptors.request.use(
     (config) => {
         const tableToken = typeof window !== 'undefined' ? sessionStorage.getItem('tableSessionToken') : null;
+        
         if (tableToken && config.url) {
             const isAbsoluteExternal = config.url.startsWith('http://') || config.url.startsWith('https://') || config.url.startsWith('//');
             
