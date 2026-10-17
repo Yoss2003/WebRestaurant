@@ -1,10 +1,10 @@
 // components/Menu.jsx
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { restaurantService } from '../services/restaurantService';
+import api from '../services/api';
 
 const MAX_QUANTITY_PER_DISH = 100;
 
-// Validación estricta de enteros positivos (rechaza '5abc', 'abc', '0' y negativos)
 function parseStrictPositiveInt(value) {
     if (!value) return null;
     const str = String(value).trim();
@@ -13,7 +13,6 @@ function parseStrictPositiveInt(value) {
     return Number.isSafeInteger(num) && num > 0 ? num : null;
 }
 
-// Validación del contrato recibido desde la API
 function sanitizeDishes(rawData) {
     const list = Array.isArray(rawData)
         ? rawData
@@ -53,7 +52,7 @@ export default function Menu() {
     const [error, setError] = useState(null);
     const [cart, setCart] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [feedback, setFeedback] = useState(null); // { type: 'success' | 'warning' | 'error', text: string }
+    const [feedback, setFeedback] = useState(null); 
     
     const submittingRef = useRef(false);
     const abortControllerRef = useRef(null);
@@ -74,11 +73,18 @@ export default function Menu() {
         };
     });
 
-    // Carga de menú estabilizada con useCallback
     const loadMenu = useCallback(async (signal) => {
         setLoading(true);
         setError(null);
         try {
+            // P05: Solicitar la sesión de la mesa ANTES de cargar los platos
+            if (!sessionStorage.getItem('tableSessionToken') && restaurantId && tableId) {
+                const sessionRes = await api.get(`/Orders/table-session/${restaurantId}/${tableId}`, { signal });
+                if (sessionRes.data && sessionRes.data.sessionToken) {
+                    sessionStorage.setItem('tableSessionToken', sessionRes.data.sessionToken);
+                }
+            }
+
             const data = await restaurantService.getMenu({ restaurantId, tableId, signal });
             if (!signal?.aborted) {
                 setDishes(sanitizeDishes(data));
@@ -87,7 +93,7 @@ export default function Menu() {
             if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
             console.error('Hubo un error al cargar el menú: ', err);
             if (!signal?.aborted) {
-                setError('No se pudo cargar la carta. Verifica tu conexión e inténtalo de nuevo.');
+                setError('No se pudo cargar la carta. Verifica el código QR e inténtalo de nuevo.');
             }
         } finally {
             if (!signal?.aborted) {
@@ -96,42 +102,15 @@ export default function Menu() {
         }
     }, [restaurantId, tableId]);
 
-    // useEffect limpio que cumple con las reglas de ESLint para efectos
     useEffect(() => {
         const controller = new AbortController();
         abortControllerRef.current = controller;
-
-        const fetchInitialMenu = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const data = await restaurantService.getMenu({ 
-                    restaurantId, 
-                    tableId, 
-                    signal: controller.signal 
-                });
-                if (!controller.signal.aborted) {
-                    setDishes(sanitizeDishes(data));
-                }
-            } catch (err) {
-                if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
-                console.error('Hubo un error al cargar el menú: ', err);
-                if (!controller.signal.aborted) {
-                    setError('No se pudo cargar la carta. Verifica tu conexión e inténtalo de nuevo.');
-                }
-            } finally {
-                if (!controller.signal.aborted) {
-                    setLoading(false);
-                }
-            }
-        };
-
-        fetchInitialMenu();
+        loadMenu(controller.signal);
 
         return () => {
             controller.abort();
         };
-    }, [restaurantId, tableId]);
+    }, [loadMenu]);
 
     const handleRetry = () => {
         if (abortControllerRef.current) {
@@ -199,7 +178,6 @@ export default function Menu() {
         setIsSubmitting(true);
         setFeedback(null);
 
-        // 1. Enviar el pedido
         try {
             const response = await restaurantService.sendOrder(tableId, snapshotItems, restaurantId);
             const orderId = response?.orderId ?? response?.id;
@@ -225,7 +203,6 @@ export default function Menu() {
             return;
         }
 
-        // 2. Recargar disponibilidad en bloque separado
         try {
             const controller = new AbortController();
             abortControllerRef.current = controller;
